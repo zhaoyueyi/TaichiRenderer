@@ -60,13 +60,19 @@ def line(x0: int, y0: int, x1: int, y1: int, image, color):
             y += (1 if y1>y0 else -1)
             error2 -= dx * 2
 
+# 计算重心
+def barycentric(pts, P):
+    u = np.cross([pts[2][0]-pts[0][0], pts[1][0]-pts[0][0], pts[0][0]-P[0]], [pts[2][1]-pts[0][1], pts[1][1]-pts[0][1], pts[0][1]-P[1]])
+    if abs(u[2])<1: return [-1, 1, 1]
+    return [1.-(u[0]+u[1])/u[2], u[1]/u[2], u[0]/u[2]]
+
 # 三角形光栅化
-def triangle(t0, t1, t2, image, color):
-    if t0[1]==t1[1] and t0[1]==t2[1]: return
-    # bubble sort verts from low to high
-    if t0[1]>t1[1]: t0, t1 = t1, t0
-    if t0[1]>t2[1]: t0, t2 = t2, t0
-    if t1[1]>t2[1]: t2, t1 = t1, t2
+def triangle(pts, image, color):
+    # if t0[1]==t1[1] and t0[1]==t2[1]: return
+    # # bubble sort verts from low to high
+    # if t0[1]>t1[1]: t0, t1 = t1, t0
+    # if t0[1]>t2[1]: t0, t2 = t2, t0
+    # if t1[1]>t2[1]: t2, t1 = t1, t2
 
     # # border
     # line(t0[0], t0[1], t1[0], t1[1], image, color)
@@ -74,40 +80,33 @@ def triangle(t0, t1, t2, image, color):
     # line(t2[0], t2[1], t0[0], t0[1], image, color)
 
     # scanline
-    total_height = t2[1] - t0[1]
-    for i in range(0, total_height, 1):
-        second_half = i>t1[1]-t0[1] or t1[1]==t0[1]
-        segment_height = t2[1]-t1[1] if second_half else t1[1]-t0[1]
-        alpha = float(i / total_height)
-        beta  = float((i - (t1[1]-t0[1] if second_half else 0)) / segment_height)  # might div 0
-        A = t0 + (np.subtract(t2, t0)) * alpha
-        B = (t1 + (np.subtract(t2, t1)) * beta) if second_half else (t0 + (np.subtract(t1, t0)) * beta)
-        if A[0]>B[0]: A, B = B, A
-        for j in range(int(A[0]), int(B[0]), 1):
-            image[j][t0[1]+i] = color
-
-
-    # for y in range(t0[1], t1[1], 1):
-    #     segment_height = t1[1] - t0[1] + 1
-    #     alpha = float((y-t0[1]) / total_height)
-    #     beta  = float((y-t0[1]) / segment_height)  # might div 0
+    # total_height = t2[1] - t0[1]
+    # for i in range(0, total_height, 1):
+    #     second_half = i>t1[1]-t0[1] or t1[1]==t0[1]
+    #     segment_height = t2[1]-t1[1] if second_half else t1[1]-t0[1]
+    #     alpha = float(i / total_height)
+    #     beta  = float((i - (t1[1]-t0[1] if second_half else 0)) / segment_height)  # might div 0
     #     A = t0 + (np.subtract(t2, t0)) * alpha
-    #     B = t0 + (np.subtract(t1, t0)) * beta
+    #     B = (t1 + (np.subtract(t2, t1)) * beta) if second_half else (t0 + (np.subtract(t1, t0)) * beta)
     #     if A[0]>B[0]: A, B = B, A
     #     for j in range(int(A[0]), int(B[0]), 1):
-    #         image[j][y] = color
-    #
-    # for y in range(t1[1], t2[1], 1):
-    #     segment_height = t2[1] - t1[1] + 1
-    #     alpha = float((y - t0[1]) / total_height)
-    #     beta  = float((y - t1[1]) / segment_height)  # might div 0
-    #     A = t0 + (np.subtract(t2, t0)) * alpha
-    #     B = t1 + (np.subtract(t2, t1)) * beta
-    #     if A[0] > B[0]: A, B = B, A
-    #     for j in range(int(A[0]), int(B[0]), 1):
-    #         image[j][y] = color
-    #     # image[int(A[0])][y] = TGA_red
-    #     # image[int(B[0])][y] = TGA_green
+    #         image[j][t0[1]+i] = color
+
+    # barycentric
+    bboxmin = [width-1, height-1]
+    bboxmax = [0, 0]
+    clamp   = [width-1, height-1]
+    for i in range(3):
+        for j in range(2):
+            bboxmin[j] = max(0,        min(bboxmin[j], pts[i][j]))
+            bboxmax[j] = min(clamp[j], max(bboxmax[j], pts[i][j]))
+    P = [0, 0]
+    for P[0] in range(int(bboxmin[0]), int(bboxmax[0]+1)):
+        for P[1] in range(int(bboxmin[1]), int(bboxmax[1]+1)):
+            bc_screen = barycentric(pts, P)
+            if bc_screen[0]<0 or bc_screen[1]<0 or bc_screen[2]<0:continue
+            image[P[0]][P[1]] = color
+
 
 def main():
     # init
@@ -116,27 +115,31 @@ def main():
     matrix_image.flags.writeable = True
 
     # model read
-    # model = Model('obj/african_head/african_head')
-    # print(model.faces())
+    model = Model('obj/african_head/african_head')
 
     # render
-    # for face in model.faces():
-    #     # print(face)
-    #     for j in range(3):
-    #         v0 = model.vert(face[j])
-    #         v1 = model.vert(face[(j+1)%3])
-    #         x0 = int((v0[0]+1.)*width/2.)
-    #         y0 = int((v0[1]+1.)*height/2.)
-    #         x1 = int((v1[0]+1.)*width/2.)
-    #         y1 = int((v1[1]+1.)*height/2.)
-    #         line(x0, y0, x1, y1, matrix_image, TGA_white)
-
-    t0 = [[10, 70], [50, 160], [70, 80]]
-    t1 = [[180, 50], [150, 1], [70, 180]]
-    t2 = [[180, 150], [120, 160], [130, 180]]
-    triangle(t0[0], t0[1], t0[2], matrix_image, TGA_red)
-    triangle(t1[0], t1[1], t1[2], matrix_image, TGA_white)
-    triangle(t2[0], t2[1], t2[2], matrix_image, TGA_green)
+    for face in model.faces():
+        screen_coords = [None, None, None]
+        for j in range(3):
+            world_coords = model.vert(face[j])
+            screen_coords[j] = [(world_coords[0]+1.)*width/2., (world_coords[1]+1.)*height/2.]
+            # v0 = model.vert(face[j])
+            # v1 = model.vert(face[(j+1)%3])
+            # x0 = int((v0[0]+1.)*width/2.)
+            # y0 = int((v0[1]+1.)*height/2.)
+            # x1 = int((v1[0]+1.)*width/2.)
+            # y1 = int((v1[1]+1.)*height/2.)
+            # line(x0, y0, x1, y1, matrix_image, TGA_white)
+        triangle(screen_coords, matrix_image, [np.random.randint(0, 256), np.random.randint(0, 256), np.random.randint(0, 256), 255])
+    # t0 = [[10, 70], [50, 160], [70, 80]]
+    # t1 = [[180, 50], [150, 1], [70, 180]]
+    # t2 = [[180, 150], [120, 160], [130, 180]]
+    # triangle(t0, matrix_image, TGA_white)
+    # triangle(t1, matrix_image, TGA_red)
+    # triangle(t2, matrix_image, TGA_green)
+    # triangle(t0[0], t0[1], t0[2], matrix_image, TGA_red)
+    # triangle(t1[0], t1[1], t1[2], matrix_image, TGA_white)
+    # triangle(t2[0], t2[1], t2[2], matrix_image, TGA_green)
 
     # show&save
     matrix_image = Image.fromarray(matrix_image).transpose(Image.FLIP_TOP_BOTTOM)  # np矩阵转图像 PIL绘制以左上角为原点 所以上下翻转为以左下为原点
