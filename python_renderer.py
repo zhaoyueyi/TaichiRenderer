@@ -8,10 +8,14 @@ from PIL import Image
 from model import Model
 
 TGA_white = (255, 255, 255, 255)
-TGA_red   = (255,   0,   0, 255)
-TGA_green = (  0, 128,   0, 255)
+TGA_red   = (255, 0,   0,   255)
+TGA_green = (0,   128, 0,   255)
 width  = 800
 height = 800
+light_dir = [1,  1, 1]  # light source
+eye       = [-1, 1, 3]  # camera position
+center    = [0,  0, 0]  # camera direction
+up        = [0,  1, 0]  # camera up vector
 
 # 浮点数range()
 def frange(start, stop, step):
@@ -120,26 +124,18 @@ def main():
     # render
     for face in model.faces():
         screen_coords = [None, None, None]
+        world_coords  = [None, None, None]
         for j in range(3):
-            world_coords = model.vert(face[j])
-            screen_coords[j] = [(world_coords[0]+1.)*width/2., (world_coords[1]+1.)*height/2.]
-            # v0 = model.vert(face[j])
-            # v1 = model.vert(face[(j+1)%3])
-            # x0 = int((v0[0]+1.)*width/2.)
-            # y0 = int((v0[1]+1.)*height/2.)
-            # x1 = int((v1[0]+1.)*width/2.)
-            # y1 = int((v1[1]+1.)*height/2.)
-            # line(x0, y0, x1, y1, matrix_image, TGA_white)
-        triangle(screen_coords, matrix_image, [np.random.randint(0, 256), np.random.randint(0, 256), np.random.randint(0, 256), 255])
-    # t0 = [[10, 70], [50, 160], [70, 80]]
-    # t1 = [[180, 50], [150, 1], [70, 180]]
-    # t2 = [[180, 150], [120, 160], [130, 180]]
-    # triangle(t0, matrix_image, TGA_white)
-    # triangle(t1, matrix_image, TGA_red)
-    # triangle(t2, matrix_image, TGA_green)
-    # triangle(t0[0], t0[1], t0[2], matrix_image, TGA_red)
-    # triangle(t1[0], t1[1], t1[2], matrix_image, TGA_white)
-    # triangle(t2[0], t2[1], t2[2], matrix_image, TGA_green)
+            v = model.vert(face[j])
+            screen_coords[j] = [(v[0]+1.)*width/2., (v[1]+1.)*height/2.]
+            world_coords[j] = v
+
+        n = np.subtract(world_coords[2], world_coords[0])*np.subtract(world_coords[1], world_coords[0])
+        norm = np.linalg.norm(n)
+        n = np.divide(n, norm)
+        intensity = np.dot(n, light_dir)
+        if intensity > 0:
+            triangle(screen_coords, matrix_image, [intensity*255, intensity*255, intensity*255, 255])
 
     # show&save
     matrix_image = Image.fromarray(matrix_image).transpose(Image.FLIP_TOP_BOTTOM)  # np矩阵转图像 PIL绘制以左上角为原点 所以上下翻转为以左下为原点
