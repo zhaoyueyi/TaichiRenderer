@@ -22,10 +22,10 @@ def readobj(path, orient='xyz', scale=None, simple=False, usemtl=True, quadok=Fa
     usemtls = []
     mtllib = None
 
-    if callable(getattr(path+'.obj', 'read', None)):
+    if callable(getattr(path, 'read', None)):
         lines = path.readlines()
     else:
-        with open(path+'.obj', 'rb') as myfile:
+        with open(path, 'rb') as myfile:
             lines = myfile.readlines()
 
     # cache vertices
@@ -218,8 +218,13 @@ def objmknorm(obj):
     obj['f'] = newf
 
 
-def frange(start, stop, step):
-    x = start
-    while x < stop:
-        yield x
-        x += step
+# def readply(path):
+#     from plyfile import PlyData
+#
+#     ply = PlyData.read(path)
+#     verts = ply.elements[0]
+#     faces = ply.elements[1]
+#     verts = np.array([list(v)[:3] for v in verts], dtype=np.float32)
+#     faces = np.array([list(f[0]) for f in faces], dtype=np.int32)
+#
+#     return verts, faces
