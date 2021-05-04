@@ -3,7 +3,7 @@
 # @File : tr_unit.py
 # @Software: PyCharm
 # coding:utf-8
-import taichi as ti
+from common import *
 
 @ti.data_oriented
 class TRUnit:

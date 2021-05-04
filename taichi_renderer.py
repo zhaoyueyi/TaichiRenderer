@@ -3,51 +3,62 @@
 # @File : taichi_renderer.py
 # @Software: PyCharm
 # coding:utf-8
-import taichi as ti
-# import taichi_glsl as tg
-import numpy as np
+
+from common import *
 import tr_utils as tu
 from tr_model import TRModel
-# from tr_object import Triangle
-from tr_shader import PointShader
+from tr_shader import *
 import tr_unit as tru
-
-
-# # widget
-# width  = 800
-# height = 800
-# # env
-# light_dir = [1,  1, 1]  # light source
-# eye       = [-1, 1, 3]  # camera position
-# center    = [0,  0, 0]  # camera direction
-# up        = [0,  1, 0]  # camera up vector
 
 @ti.data_oriented
 class TiRenderer:
-    def __init__(self, res=(512, 512), **options):
-        self.res = res
+    def __init__(self, res=(1024, 1024), **options):
+        self.res = tovector((res, res) if isinstance(res, int) else res)
         self.image = ti.Vector.field(3, float, self.res)
         self.units = {}
         self.models = {}
 
+        self.W2V = ti.Matrix.field(4, 4, float, ())
+        self.V2W = ti.Matrix.field(4, 4, float, ())
+        self.bias = ti.Vector.field(2, float, ())
+        self.depth = ti.field(float, self.res)
         # self.options = options
         # self.light_dir = ti.Vector(3, ti.f32, ())
 
-    def add_model(self, model):
-        # tr_model = TRModel(self, model_name)
-        shader = PointShader(self)
+        @ti.materialize_callback
+        @ti.kernel
+        def init_engine():
+            self.W2V[None] = ti.Matrix.identity(float, 4)
+            self.W2V[None][2, 2] = -1
+            self.V2W[None] = ti.Matrix.identity(float, 4)
+            self.V2W[None][2, 2] = -1
+            self.bias[None] = [0.5, 0.5]
+        ti.materialize_callback(self.clear_depth)
+
+    @ti.kernel
+    def clear_depth(self):
+        for P in ti.grouped(self.depth):
+            self.depth[P] = -1
+
+    def add_model(self, model, render_type='point'):
+        global shader
+        if render_type == 'point':
+            shader = PointShader(self)
+        elif render_type == 'line':
+            shader = LineShader(self)
+        elif render_type == 'triangle':
+            texture = Texture(model.name+'_diffuse.tga')
+            shader = TriangleShader(self, texture=texture)
         unit = tru.ColorUnit(self.image)
         self.units[model] = unit
         self.models[model] = namespace(shader=shader)
 
-
     def render(self):
-        # self.image.fill(self.bgcolor)
         for model, oinfo in self.models.items():
             unit = self.units[model]
+            # oinfo.shader.bind_texture(model.texture)
             oinfo.shader.set_model(model)
             oinfo.shader.render(unit)
-
 
     def show(self, save_file=None):
         gui = ti.GUI('Taichi Renderer', self.res, fast_gui=True)
@@ -55,6 +66,8 @@ class TiRenderer:
             self.render()
             gui.set_image(self.image)
             gui.show(save_file)
+
+
 
     # def add_triangle(self, a, b, c):
     #     tr = Triangle(a, b, c)

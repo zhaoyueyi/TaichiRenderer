@@ -3,15 +3,15 @@
 # @File : ti_object.py
 # @Software: PyCharm
 # coding:utf-8
-import taichi as ti
+
+from common import *
 import tr_utils as tu
-import tr_color as tc
-import numpy as np
 
 @ti.data_oriented
 class TRModel:
     def __init__(self, obj_name:str):
         obj = tu.readobj(obj_name)
+        # self.texture = tu.texture_as_field(obj_name+'_diffuse.tga')
         self.faces = ti.Matrix.field(3, 3, int, len(obj['f']))
         self.verts = ti.Vector.field(3, float, len(obj['v']))  # [[xxx, xxx, xxx], [], []...]
         self.coors = ti.Vector.field(2, float, len(obj['vt']))  # [[xxx, xxx], [], []...]
@@ -35,6 +35,15 @@ class TRModel:
             self.verts.from_numpy(obj['v'])
             self.coors.from_numpy(obj['vt'])
             self.norms.from_numpy(obj['vn'])
+
+    @ti.func
+    def get_texture_size(self):
+        return self.texture.shape[0], self.texture.shape[1]
+
+    @ti.func
+    def get_texture_color(self, p):
+        p = ifloor(p*self.get_texture_size())
+        # return self.texture[p]
 
     @ti.func
     def get_nfaces(self):  # 获取三角形面数
