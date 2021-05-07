@@ -3,7 +3,6 @@
 # @File : taichi_renderer.py
 # @Software: PyCharm
 # coding:utf-8
-import numpy as np
 
 from common import *
 import tr_utils as tu
@@ -38,10 +37,12 @@ class TiRenderer:
         # self.mat = ti.Matrix(4, 4, float, ())
         #
         # self.mat_view = ti.Matrix([[384, 0, 0, 512], [0, 384, 0, 512], [0, 0, 1, 0], [0, 0, 0, 1]])
-        self.mat_view = ti.Matrix([[1, 0, 0, 0], [0, 1, -1.e-05, 0], [0, 1.e-05, 1, -3.e+00], [0, 0, 0, 1]])
-        self.mat = self.mat_pers @ self.mat_view
+        # self.mat_view = ti.Matrix([[1, 0, 0, 0], [0, 1, -1.e-05, 0], [0, 1.e-05, 1, -3.e+00], [0, 0, 0, 1]])
+        self.mat_lookat = ti.Matrix([[1, 0, 0, 0], [0, 1, -0.00001, 0], [0, 0.00001, 1, -3.e+00], [0, 0, 0, 1]])
+        self.mat = ti.Matrix([[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]])
+        self.set_camera()
         # self.mat_pers.from_numpy(ndarray=mm)
-        # print(self.mat_pers)
+        # print(self.mat)
 
         # self.options = options
         # self.light_dir = ti.Vector(3, ti.f32, ())
@@ -66,6 +67,32 @@ class TiRenderer:
             self.bias[None] = [0.5, 0.5]
 
         ti.materialize_callback(self.clear_depth)
+
+    def set_camera(self):
+        mat_lookat = self.lookat()
+        for i in range(3):
+            self.mat_lookat[i, 0] = mat_lookat[i, 0]
+            self.mat_lookat[i, 1] = mat_lookat[i, 1]
+            self.mat_lookat[i, 2] = mat_lookat[i, 2]
+            self.mat_lookat[i, 3] = mat_lookat[i, 3]
+        # print(self.mat_view)
+        self.mat = self.mat_pers @ self.mat_lookat
+        # self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
+        # print(mat_lookat)
+
+    def lookat(self, eye=(0, 0, 3), center=(0, 0, 0), up=(0, 1, 1e-12)):
+        center = np.array(center, dtype=float)
+        eye = np.array(eye, dtype=float)
+        up = np.array(up, dtype=float)
+
+        fwd = -eye
+        fwd /= np.linalg.norm(fwd)
+        right = np.cross(fwd, up)
+        right /= np.linalg.norm(right)
+        up = np.cross(right, fwd)
+
+        lin = np.transpose(np.stack([right, up, -fwd]))
+        return np.linalg.inv(affine(lin, (center + eye)))
 
     @ti.func
     def apply_mat(self, pos):
@@ -101,12 +128,12 @@ class TiRenderer:
         for P in ti.grouped(self.depth):
             self.depth[P] = -1
 
-    def set_camera(self, view, proj):
-        W2V = proj @ view
-        V2W = np.linalg.inv(W2V)
-        self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
-        self.V2W.from_numpy(np.array(V2W, dtype=np.float32))
-
+    # def set_camera(self, view, proj):
+    #     W2V = proj @ view
+    #     V2W = np.linalg.inv(W2V)
+    #     self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
+    #     self.V2W.from_numpy(np.array(V2W, dtype=np.float32))
+    #
 
     def add_model(self, model, render_type='point'):
         global shader
@@ -137,7 +164,6 @@ class TiRenderer:
         # #     self.render()
             gui.set_image(self.image)
             gui.show(save_file)
-
 
     # def add_triangle(self, a, b, c):
     #     tr = Triangle(a, b, c)
@@ -174,6 +200,12 @@ def frustum(left=-1, right=1, bottom=-1, top=1, near=1, far=100):
     lin[2, 3] = -2 * far * near / (far - near)
     lin[3, 2] = -1
     lin[3, 3] = 0
+    return lin
+
+def affine(lin, pos):
+    lin = np.concatenate([lin, np.zeros((1, 3))], axis=0)
+    pos = np.concatenate([pos, np.ones(1)])
+    lin = np.concatenate([lin, pos[:, None]], axis=1)
     return lin
 
 '''

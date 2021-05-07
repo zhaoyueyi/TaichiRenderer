@@ -147,7 +147,6 @@ class TriangleShader:
         self.img = self.renderer.image
         self.occup = ti.field(int, self.res)
         self.texture = texture
-        self.mat_view = ti.Matrix.field(4, 4, float, ())
         # self.mat_view[None] = ti.Matrix.identity(float, 4)
         # self.mat_view.from_numpy(np.array(m, dtype=np.float32))
 
@@ -157,7 +156,6 @@ class TriangleShader:
         self.coo = ti.Vector.field(2, float, maxfaces)
         self.wsc = ti.Vector.field(3, float, maxfaces)
 
-        self.matrix_viewport(self.res.x / 8, self.res.y / 8, self.res.x * 3 / 4, self.res.y * 3 / 4)
 
     @ti.func
     def to_viewport(self, p):
@@ -226,16 +224,6 @@ class TriangleShader:
         v = (d00*d12 - d01*d02) * inver
         return 1 if u>0 and v>0 and u+v<=1 else -1
 
-    def matrix_viewport(self, x, y, w, h):
-        self.mat_view[None][0, 3] = x + w / 2.
-        self.mat_view[None][1, 3] = y + h / 2.
-        self.mat_view[None][2, 3] = 255 / 2.
-
-        self.mat_view[None][0, 0] = w / 2.
-        self.mat_view[None][1, 1] = h / 2.
-        self.mat_view[None][2, 2] = 255 / 2.
-
-
     @ti.kernel
     def render(self, unit:ti.template()):
         color = V(0., 1., 1.)
@@ -247,7 +235,7 @@ class TriangleShader:
             # mat = mat_pers @ mat_view
             Av, Bv, Cv = [self.renderer.apply_mat(p) for p in [A, B, C]]
             facing = (Bv.xy - Av.xy).cross(Cv.xy - Av.xy)
-            if facing <= 0:continue
+            # if facing <= 0:continue
 
             a, b, c = [self.to_viewport(p) for p in [Av, Bv, Cv]]
             At, Bt, Ct = self.get_face_texcoords(f)
@@ -276,96 +264,6 @@ class TriangleShader:
                     self.renderer.depth[P] = depth_f
                     texcoord = wei.x*At+wei.y*Bt+wei.z*Ct
                     self.img[P] = self.texture.get_color(texcoord)*intensity
-
-    #
-    # @ti.kernel
-    # def render_occup(self):
-    #     for P in ti.grouped(self.occup):
-    #         self.occup[P] = -1
-    #     # for f in ti.smart(self.get_faces_range()):
-    #     #     Al, Bl, Cl = self.get_face_vertices(f)
-    #     #     # Av, Bv, Cv = [self.engine.to_viewspace(p) for p in [Al, Bl, Cl]]
-    #     #     Av, Bv, Cv = [p for p in [Al, Bl, Cl]]
-    #     #     facing = (Bv.xy - Av.xy).cross(Cv.xy - Av.xy)
-    #     #     if facing <= 0:
-    #     #         # if ti.static(self.culling):    ############################################################
-    #     #         continue
-    #     #
-    #     #     # if ti.static(self.clipping):   ############################################################
-    #     #     #     if not all(-1 <= Av <= 1):
-    #     #     #         if not all(-1 <= Bv <= 1):
-    #     #     #             if not all(-1 <= Cv <= 1):
-    #     #     #                 continue
-    #     #
-    #     #     # a, b, c = [self.engine.to_viewport(p) for p in [Av, Bv, Cv]]   ############################################################
-    #     #     a, b, c = [p for p in [Av, Bv, Cv]]
-    #     #
-    #     #     bot, top = ifloor(min(a, b, c)), iceil(max(a, b, c))
-    #     #     bot, top = max(bot, 0), min(top, self.res - 1)
-    #     #     n = (b - a).cross(c - a)
-    #     #     bcn = (b - c) / n
-    #     #     can = (c - a) / n
-    #     #     wscale = 1 / ti.Vector([mapply(self.engine.W2V[None], p, 1)[1] for p in [Al, Bl, Cl]])   ############################################################
-    #     #     for P in ti.grouped(ti.ndrange((bot.x, top.x + 1), (bot.y, top.y + 1))):
-    #     #         pos = float(P) + self.engine.bias[None]   ############################################################
-    #     #         w_bc = (pos - b).cross(bcn)
-    #     #         w_ca = (pos - c).cross(can)
-    #     #         wei = V(w_bc, w_ca, 1 - w_bc - w_ca) * wscale
-    #     #         wei /= wei.x + wei.y + wei.z
-    #     #         if all(wei >= 0):
-    #     #             depth_f = wei.x * Av.z + wei.y * Bv.z + wei.z * Cv.z
-    #     #             depth = int(depth_f * self.engine.maxdepth)   ############################################################
-    #     #             if ti.atomic_min(self.engine.depth[P], depth) > depth:   ############################################################
-    #     #                 if self.engine.depth[P] >= depth:   ############################################################
-    #     #                     self.occup[P] = f
-    #
-    #         # self.bcn[f] = bcn
-    #         # self.can[f] = can
-    #         # self.boo[f] = b
-    #         # self.coo[f] = c
-    #         # self.wsc[f] = wscale
-    #
-    # @ti.kernel
-    # def render_color(self, shader: ti.template()):
-    #     for P in ti.grouped(self.occup):
-    #         f = self.occup[P]
-    #         if f == -1:
-    #             continue
-    #
-    #         Al, Bl, Cl = self.get_face_vertices(f)
-    #
-    #         bcn = self.bcn[f]
-    #         can = self.can[f]
-    #         b = self.boo[f]
-    #         c = self.coo[f]
-    #         wscale = self.wsc[f]
-    #         p = float(P) + self.engine.bias[None]   ############################################################
-    #         w_bc = (p - b).cross(bcn)
-    #         w_ca = (p - c).cross(can)
-    #         wei = V(w_bc, w_ca, 1 - w_bc - w_ca) * wscale
-    #         wei /= wei.x + wei.y + wei.z
-    #
-    #         self.interpolate(shader, P, p, f, wei, Al, Bl, Cl)
-    #
-    # @ti.func
-    # def interpolate(self, shader: ti.template(), P, p, f, wei, A, B, C):
-    #     pos = wei.x * A + wei.y * B + wei.z * C
-    #
-    #     normal = V(0., 0., 0.)
-    #     if ti.static(self.smoothing):   ############################################################
-    #         An, Bn, Cn = self.get_face_normals(f)
-    #         normal = wei.x * An + wei.y * Bn + wei.z * Cn
-    #     else:
-    #         normal = (B - A).cross(C - A)  # let the shader normalize it
-    #     normal = normal.normalized()
-    #
-    #     texcoord = V(0., 0.)
-    #     if ti.static(self.texturing):   ############################################################
-    #         At, Bt, Ct = self.get_face_texcoords(f)
-    #         texcoord = wei.x * At + wei.y * Bt + wei.z * Ct
-    #
-    #     color = V(1., 1., 1.)
-    #     shader.shade_color(self.engine, P, p, f, pos, normal, texcoord, color)   ############################################################
 
 
 @ti.func
