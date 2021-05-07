@@ -99,15 +99,23 @@ class Node:
 
 @ti.data_oriented
 class Texture:
-
-    def __init__(self, path):
-        self.texture = texture_as_field(path)
+    def __init__(self, name):
+        self.texture = texture_as_field(name+'_diffuse.tga')
+        self.normal  = texture_as_field(name+'_nm.tga')
+        self.spec    = texture_as_field(name+'_spec.tga')
+        # print(self.texture)
 
     @ti.func
     def get_color(self, texcoord):
         maxcoor = V(*self.texture.shape) - 1
         coor = texcoord * maxcoor
         return bilerp(self.texture, coor)
+
+    @ti.func
+    def get_light(self, texcoord):
+        maxcoor = V(*self.normal.shape) - 1
+        coor = texcoord * maxcoor
+        return bilerp(self.normal, coor)
 
 @ti.func
 def bilerp(f: ti.template(), pos):

@@ -142,7 +142,7 @@ class TiRenderer:
         elif render_type == 'line':
             shader = LineShader(self)
         elif render_type == 'triangle':
-            texture = Texture(model.name+'_diffuse.tga')
+            texture = Texture(model.name)
             shader = TriangleShader(self, texture=texture)
         unit = tru.ColorUnit(self.image)
         self.units[model] = unit

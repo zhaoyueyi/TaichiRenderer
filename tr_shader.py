@@ -226,7 +226,7 @@ class TriangleShader:
 
     @ti.kernel
     def render(self, unit:ti.template()):
-        color = V(0., 1., 1.)
+        light_dir = V(0., 1., 1.)
         for f in ti.smart(self.get_faces_range()):
             A, B, C = self.get_face_vertices(f)
             # mat_pers = ti.Matrix([[1,   0, 0,  0], [0,  1, 0,  0], [0, 0,    1,    0], [0, 0, -10, 1]])
@@ -239,12 +239,13 @@ class TriangleShader:
 
             a, b, c = [self.to_viewport(p) for p in [Av, Bv, Cv]]
             At, Bt, Ct = self.get_face_texcoords(f)
+            An, Bn, Cn = self.get_face_normals(f)
             bot, top = ifloor(min(a, b, c)), iceil(max(a, b, c))
             bot, top = max(bot, 0), min(top, self.res-1)
 
             normal = (B-A).cross(C-A)
             normal = normal.normalized()
-            intensity = normal.dot(color)/color.norm()
+            intensity = normal.dot(light_dir)/light_dir.norm()
             intensity = intensity if intensity>=0 else 0
             light = V(intensity, intensity, intensity)
 
@@ -263,6 +264,8 @@ class TriangleShader:
                 if self.renderer.depth[P] < depth_f:
                     self.renderer.depth[P] = depth_f
                     texcoord = wei.x*At+wei.y*Bt+wei.z*Ct
+                    norcoord = wei.x*An+wei.y*Bn+wei.z*Cn
+                    intensity = norcoord.dot(light_dir)
                     self.img[P] = self.texture.get_color(texcoord)*intensity
 
 
