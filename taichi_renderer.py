@@ -3,6 +3,7 @@
 # @File : taichi_renderer.py
 # @Software: PyCharm
 # coding:utf-8
+import numpy as np
 
 from common import *
 import tr_utils as tu
@@ -22,23 +23,90 @@ class TiRenderer:
         self.V2W = ti.Matrix.field(4, 4, float, ())
         self.bias = ti.Vector.field(2, float, ())
         self.depth = ti.field(float, self.res)
+
+        # self.camera = V(0, 0, 3)
+        self.mat_projection = ti.Matrix.field(4, 4, float, ())
+        self.mat_viewport = ti.Matrix.field(4, 4, float, ())
+
+        self.camera = V(0, 0, 0.01)
+
+        # self.mat_pers = ti.Matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, self.camera.norm(), 1]])
+        self.mat_pers = ti.Matrix([[1.732, 0, 0, 0], [0, 1.732, 0, 0], [0, 0, -1, -0.1], [0, 0, -1, 0]])
+        # mm = perspective()
+        # print(mm)
+        # self.mat_pers = ti.Matrix(4, 4, float, ())
+        # self.mat = ti.Matrix(4, 4, float, ())
+        #
+        # self.mat_view = ti.Matrix([[384, 0, 0, 512], [0, 384, 0, 512], [0, 0, 1, 0], [0, 0, 0, 1]])
+        self.mat_view = ti.Matrix([[1, 0, 0, 0], [0, 1, -1.e-05, 0], [0, 1.e-05, 1, -3.e+00], [0, 0, 0, 1]])
+        self.mat = self.mat_pers @ self.mat_view
+        # self.mat_pers.from_numpy(ndarray=mm)
+        # print(self.mat_pers)
+
         # self.options = options
         # self.light_dir = ti.Vector(3, ti.f32, ())
 
         @ti.materialize_callback
         @ti.kernel
         def init_engine():
+            self.mat_projection[None] = ti.Matrix.identity(float, 4)
+            self.mat_projection[None][3, 2] = -1/self.camera.z
+            # viewport = self.viewport(self.res[0] / 8, self.res[1] / 8, self.res[0] * 3 / 4, self.res[1] * 3 / 4)
+            # self.mat_viewport[None].from_numpy(np.array(viewport, dtype=np.float32))
             self.W2V[None] = ti.Matrix.identity(float, 4)
             self.W2V[None][2, 2] = -1
+            '''
+            1 0  0 0
+            0 1  0 0
+            0 0 -1 0
+            0 0  0 1
+            '''
             self.V2W[None] = ti.Matrix.identity(float, 4)
             self.V2W[None][2, 2] = -1
             self.bias[None] = [0.5, 0.5]
+
         ti.materialize_callback(self.clear_depth)
+
+    @ti.func
+    def apply_mat(self, pos):
+        # p = V(pos[0], pos[1], pos[2], 1)
+        # for i in ti.static(range(3)):
+        #     p[i] = pos[0]*self.mat[i, 0]+pos[1]*self.mat[i, 1]+pos[2]*self.mat[i, 2]+self.mat[i, 3]
+        # return V(p[0]/p[3], p[1]/p[3], p[2]/p[3])
+        return mapply_pos(self.mat, pos)
+
+    @ti.func
+    def to_viewspace1(self, p):
+        return mapply_pos(self.W2V[None], p)
+        # print(self.W2V[None])
+        # return mapply_pos(self.mat_projection[None], p)
+
+    @ti.func
+    def to_viewport(self, p):
+        return (p.xy * 0.5 + 0.5) * self.res
+
+    @ti.func
+    def viewport(self, x, y, w, h):
+        mat = np.eye(4)
+        mat[0, 3] = x+w/2
+        mat[1, 3] = y+h/2
+        mat[2, 3] = -1/2
+        mat[0, 0] = w/2
+        mat[1, 1] = h/2
+        mat[2, 2] = -1/2
+        return mat
 
     @ti.kernel
     def clear_depth(self):
         for P in ti.grouped(self.depth):
             self.depth[P] = -1
+
+    def set_camera(self, view, proj):
+        W2V = proj @ view
+        V2W = np.linalg.inv(W2V)
+        self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
+        self.V2W.from_numpy(np.array(V2W, dtype=np.float32))
+
 
     def add_model(self, model, render_type='point'):
         global shader
@@ -62,11 +130,13 @@ class TiRenderer:
 
     def show(self, save_file=None):
         gui = ti.GUI('Taichi Renderer', self.res, fast_gui=True)
+        self.render()
+        # gui.set_image(self.image)
+        # gui.show(save_file)
         while gui.running:
-            self.render()
+        # #     self.render()
             gui.set_image(self.image)
             gui.show(save_file)
-
 
 
     # def add_triangle(self, a, b, c):
@@ -93,6 +163,27 @@ class TiRenderer:
     #         x = x0*(1.-t) + x1*t;
     #         y = y0*(1.-t) + y1*t;
     #         image[int(x)][int(y)] = color
+
+def frustum(left=-1, right=1, bottom=-1, top=1, near=1, far=100):
+    lin = np.eye(4)
+    lin[0, 0] = 2 * near / (right - left)
+    lin[1, 1] = 2 * near / (top - bottom)
+    lin[0, 2] = (right + left) / (right - left)
+    lin[1, 2] = (top + bottom) / (top - bottom)
+    lin[2, 2] = -(far + near) / (far - near)
+    lin[2, 3] = -2 * far * near / (far - near)
+    lin[3, 2] = -1
+    lin[3, 3] = 0
+    return lin
+
+'''
+透视投影矩阵： y方向视角，纵横比，近剪裁面到原点距离，远剪裁面到原点距离
+'''
+def perspective(fov=60, aspect=1, near=0.05, far=500):
+    fov = np.tan(np.radians(fov) / 2)
+    ax, ay = fov * aspect, fov
+    return frustum(-near * ax, near * ax, -near * ay, near * ay, near, far)
+
 
 class namespace(dict):
     def __getattr__(self, name):

@@ -3,6 +3,7 @@
 # @File : tr_shader.py
 # @Software: PyCharm
 # coding:utf-8
+import numpy as np
 
 from common import *
 from hacker import *
@@ -146,6 +147,9 @@ class TriangleShader:
         self.img = self.renderer.image
         self.occup = ti.field(int, self.res)
         self.texture = texture
+        self.mat_view = ti.Matrix.field(4, 4, float, ())
+        # self.mat_view[None] = ti.Matrix.identity(float, 4)
+        # self.mat_view.from_numpy(np.array(m, dtype=np.float32))
 
         self.bcn = ti.Vector.field(2, float, maxfaces)
         self.can = ti.Vector.field(2, float, maxfaces)
@@ -153,9 +157,13 @@ class TriangleShader:
         self.coo = ti.Vector.field(2, float, maxfaces)
         self.wsc = ti.Vector.field(3, float, maxfaces)
 
+        self.matrix_viewport(self.res.x / 8, self.res.y / 8, self.res.x * 3 / 4, self.res.y * 3 / 4)
+
     @ti.func
     def to_viewport(self, p):
+        # print(p.xy)
         return (p.xy * 0.5 + 0.5) * self.res
+        # return p.xy
 
     @ti.func
     def get_faces_range(self):
@@ -218,15 +226,31 @@ class TriangleShader:
         v = (d00*d12 - d01*d02) * inver
         return 1 if u>0 and v>0 and u+v<=1 else -1
 
+    def matrix_viewport(self, x, y, w, h):
+        self.mat_view[None][0, 3] = x + w / 2.
+        self.mat_view[None][1, 3] = y + h / 2.
+        self.mat_view[None][2, 3] = 255 / 2.
+
+        self.mat_view[None][0, 0] = w / 2.
+        self.mat_view[None][1, 1] = h / 2.
+        self.mat_view[None][2, 2] = 255 / 2.
+
+
     @ti.kernel
     def render(self, unit:ti.template()):
         color = V(0., 1., 1.)
         for f in ti.smart(self.get_faces_range()):
             A, B, C = self.get_face_vertices(f)
-            At, Bt, Ct = self.get_face_texcoords(f)
-            a, b, c = [self.to_viewport(p) for p in [A, B, C]]
-            facing = (b.xy - a.xy).cross(c.xy - a.xy)
+            # mat_pers = ti.Matrix([[1,   0, 0,  0], [0,  1, 0,  0], [0, 0,    1,    0], [0, 0, -10, 1]])
+            # mat_view = ti.Matrix([[512, 0, 0,640], [0,512, 0,640], [0, 0,127.5,127.5], [0, 0,   0, 1]])
+            # # print(self.mat_view[None])
+            # mat = mat_pers @ mat_view
+            Av, Bv, Cv = [self.renderer.apply_mat(p) for p in [A, B, C]]
+            facing = (Bv.xy - Av.xy).cross(Cv.xy - Av.xy)
             if facing <= 0:continue
+
+            a, b, c = [self.to_viewport(p) for p in [Av, Bv, Cv]]
+            At, Bt, Ct = self.get_face_texcoords(f)
             bot, top = ifloor(min(a, b, c)), iceil(max(a, b, c))
             bot, top = max(bot, 0), min(top, self.res-1)
 
@@ -251,7 +275,6 @@ class TriangleShader:
                 if self.renderer.depth[P] < depth_f:
                     self.renderer.depth[P] = depth_f
                     texcoord = wei.x*At+wei.y*Bt+wei.z*Ct
-
                     self.img[P] = self.texture.get_color(texcoord)*intensity
 
     #

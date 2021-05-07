@@ -55,6 +55,17 @@ def totuple(x):
 def tovector(x):
     return ti.Vector(totuple(x))
 
+@ti.pyfunc
+def Vprod(w):
+    v = tovector(w)
+    if ti.static(not v.entries):
+        return 1
+    x = v.entries[0]
+    if ti.static(len(v.entries) > 1):
+        for y in ti.static(v.entries[1:]):
+            x *= y
+    return x
+
 @ti.data_oriented
 class Node:
     arguments = []
