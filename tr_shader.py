@@ -17,7 +17,6 @@ class PointShader:
         self.renderer = renderer
         self.res = self.renderer.res
         self.img = self.renderer.image
-        self.model = None
         self.occup = ti.field(int, self.res)
 
     @ti.pyfunc
@@ -30,9 +29,11 @@ class PointShader:
         a, b, c = self.verts[f, 0], self.verts[f, 1], self.verts[f, 2]
         return a, b, c
 
+    def set_texture(self, nouse):
+        pass
+
     @ti.kernel
     def set_model(self, model: ti.template()):
-        self.model = model
         self.nfaces[None] = model.get_nfaces()
         for i in range(self.nfaces[None]):
             verts = model.get_face_verts(i)
@@ -42,15 +43,13 @@ class PointShader:
     @ti.kernel
     def render(self):
         color = V(1., 1., 1.)
-        for P in ti.grouped(self.occup):
-            self.occup[P] = -1
         for f in ti.smart(self.get_faces_range()):
-            Tee = self.get_face_vertices(f)
-            for i in ti.static(range(3)):
-                x = int(Tee[i].x*(self.res[0]/2)+(self.res[0]/2))
-                y = int(Tee[i].y*(self.res[1]/2)+(self.res[1]/2))
-                self.img[x, y] = color
-
+            A, B, C = self.get_face_vertices(f)
+            Av, Bv, Cv = [mapply_pos(self.renderer.matrix_fin[None], p) for p in [A, B, C]]
+            a, b, c = [self.renderer.to_viewport(p) for p in [Av, Bv, Cv]]
+            self.img[a.x, a.y] = color
+            self.img[b.x, b.y] = color
+            self.img[c.x, c.y] = color
 
 @ti.data_oriented
 class LineShader:
@@ -73,6 +72,9 @@ class LineShader:
     def get_face_vertices(self, f):
         A, B, C = self.verts[f, 0], self.verts[f, 1], self.verts[f, 2]
         return A, B, C
+
+    def set_texture(self, nouse):
+        pass
 
     @ti.kernel
     def set_model(self, model: ti.template()):
@@ -127,7 +129,7 @@ class LineShader:
 
 @ti.data_oriented
 class TriangleShader:
-    def __init__(self, renderer, texture, maxfaces=MAX):
+    def __init__(self, renderer, texture=NoTexture, maxfaces=MAX):
         self.maxfaces = maxfaces
         self.verts = ti.Vector.field(3, float, (maxfaces, 3))
         self.norms = ti.Vector.field(3, float, (maxfaces, 3))
@@ -170,6 +172,9 @@ class TriangleShader:
         A, B, C = self.coors[f, 0], self.coors[f, 1], self.coors[f, 2]
         return A, B, C
 
+    def set_texture(self, texture):
+        self.texture = texture
+
     @ti.kernel
     def set_model(self, model: ti.template()):
         self.nfaces[None] = model.get_nfaces()
@@ -185,23 +190,6 @@ class TriangleShader:
             coors = model.get_face_coors(i)
             for k in ti.static(range(3)):
                 self.coors[i, k] = coors[k]
-
-    @ti.func
-    def barycentric(self, A, B, C, P):
-        v0 = C.xy - A.xy
-        v1 = B.xy - A.xy
-        v2 = P.xy - A.xy
-
-        d00 = v0.dot(v0)
-        d01 = v0.dot(v1)
-        d02 = v0.dot(v2)
-        d11 = v1.dot(v1)
-        d12 = v1.dot(v2)
-
-        inver = 1 / (d00*d11 - d01*d01)
-        u = (d11*d02 - d01*d12) * inver
-        v = (d00*d12 - d01*d02) * inver
-        return 1 if u>0 and v>0 and u+v<=1 else -1
 
     @ti.kernel
     def render(self):

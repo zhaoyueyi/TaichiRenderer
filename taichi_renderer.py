@@ -15,6 +15,7 @@ class TiRenderer:
         self.image = ti.Vector.field(3, float, self.res)
         self.units = {}
         self.models = {}
+        self.shaders = []
 
         self.background_color = 0
 
@@ -30,6 +31,15 @@ class TiRenderer:
         self.light_dir = V(1., 1., 1.)
 
         self.temp = perspective()
+
+        self.ps = PointShader(self)
+        self.shaders.append(self.ps)
+        self.ls = LineShader(self)
+        self.shaders.append(self.ls)
+        self.ts = TriangleShader(self)
+        self.shaders.append(self.ts)
+
+        self.render_type = 2
 
         @ti.materialize_callback
         @ti.kernel
@@ -50,6 +60,7 @@ class TiRenderer:
             self.V2W[None] = ti.Matrix.identity(float, 4)
             self.V2W[None][2, 2] = -1
             self.bias[None] = [0.5, 0.5]
+
         ti.materialize_callback(self.clear_depth)
 
     def set_camera(self):
@@ -59,10 +70,10 @@ class TiRenderer:
             self.matrix_lookat[None][i, 1] = mat_lookat[i, 1]
             self.matrix_lookat[None][i, 2] = mat_lookat[i, 2]
             self.matrix_lookat[None][i, 3] = mat_lookat[i, 3]
-        self.afnaf()
+        self.apply()
 
     @ti.kernel
-    def afnaf(self):
+    def apply(self):
         self.matrix_fin[None] = self.matrix_perspective[None]@self.matrix_lookat[None]
 
     def lookat(self, eye, center=(0, 0, 0), up=(0, 1, 1e-12)):
@@ -103,31 +114,28 @@ class TiRenderer:
         for P in ti.grouped(self.depth):
             self.depth[P] = -1
 
-    def add_model(self, model, render_type='point'):
-        global shader
-        if render_type == 'point':
-            shader = PointShader(self)
-        elif render_type == 'line':
-            shader = LineShader(self)
-        elif render_type == 'triangle':
-            texture = Texture(model.name)
-            shader = TriangleShader(self, texture=texture)
-        unit = tru.ColorUnit(self.image)
+    def add_model(self, model, render_type=0):
+        shader = self.shaders[render_type]
+        if render_type == 2:
+            shader.set_texture(Texture(model.name))
         self.models[model] = namespace(shader=shader)
 
     def render(self):
         self.image.fill(self.background_color)
         self.clear_depth()
         for model, oinfo in self.models.items():
-            oinfo.shader.set_model(model)
-            oinfo.shader.render()
+            self.shaders[self.render_type].set_model(model)
+            self.shaders[self.render_type].render()
+            # oinfo.shader.set_model(model)
+            # oinfo.shader.render()
+
+    def change_render_type(self):
+        # self.render_type = 'point' if self.render_type == 'triangle' else 'triangle'
+        self.render_type = 2 if self.render_type == 0 else 0
 
     def show(self, save_file=None):
         gui = ti.GUI('Taichi Renderer', self.res)
-        gui.button('hello')
-        # self.render()
-        # gui.set_image(self.image)
-        # gui.show(save_file)
+        # gui.button('hello', self.change_render_type())
         while gui.running:
             self.set_camera()
             self.render()
@@ -143,6 +151,8 @@ class TiRenderer:
                         self.camera[1] += 1
                     elif e.key == gui.DOWN:
                         self.camera[1] -= 1
+                    elif e.key == gui.SPACE:
+                        self.render_type = 2 if self.render_type == 0 else 0
                     self.set_camera()
                 elif e.type == gui.MOTION:
                     if e.key == gui.WHEEL:
@@ -150,30 +160,7 @@ class TiRenderer:
                         self.camera[2] -= delta
                         self.set_camera()
 
-    # def add_triangle(self, a, b, c):
-    #     tr = Triangle(a, b, c)
-    #     self.models.append(tr)
 
-    # @ti.func
-    # def cook_coor(self, I):
-    #     scale = ti.static(2 / min(*self.image.shape()))
-    #     coor = (I - tg.vec2(*self.image.shape()) / 2) * scale
-    #     return coor
-    #
-    # @ti.func
-    # def uncook_coor(self, coor):
-    #     coor_xy = tg.shuffle(coor, 0, 1)
-    #     scale = ti.static(min(*self.image.shape()) / 2)
-    #     I = coor_xy * scale + tg.vec2(*self.image.shape()) / 2
-    #     return I
-    #
-    # # 直线光栅化
-    # def line(self, x0: int, y0: int, x1: int, y1: int, image, color):
-    #     # dda
-    #     for t in tu.frange(0.0, 1.0, 0.01):
-    #         x = x0*(1.-t) + x1*t;
-    #         y = y0*(1.-t) + y1*t;
-    #         image[int(x)][int(y)] = color
 
 def frustum(left=-1, right=1, bottom=-1, top=1, near=1, far=100):
     lin = np.eye(4)

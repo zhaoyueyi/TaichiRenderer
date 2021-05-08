@@ -15,7 +15,7 @@ def main():
     model = TRModel('obj/african_head/african_head')
     # model = TRModel('obj/boggie/body')
     # model2 = TRModel('obj/boggie/head')
-    renderer.add_model(model, render_type='triangle')
+    renderer.add_model(model, render_type=2)
     # renderer.add_model(model2, render_type='triangle')
     renderer.show()
 

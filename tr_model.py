@@ -11,21 +11,13 @@ import tr_utils as tu
 class TRModel:
     def __init__(self, obj_name:str):
         obj = tu.readobj(obj_name)
-        # self.texture = tu.texture_as_field(obj_name+'_diffuse.tga')
+
         self.faces = ti.Matrix.field(3, 3, int, len(obj['f']))
         self.verts = ti.Vector.field(3, float, len(obj['v']))  # [[xxx, xxx, xxx], [], []...]
         self.coors = ti.Vector.field(2, float, len(obj['vt']))  # [[xxx, xxx], [], []...]
         self.norms = ti.Vector.field(3, float, len(obj['vn']))  # [[xxx, xxx, xxx], [], []...]
         self.name  = obj_name
-        # self.len_faces = len(obj['f'])
-        # self.len_verts = len(obj['v'])
-        # self.len_coors = len(obj['vt'])
-        # self.len_norms = len(obj['vn'])
-        # self.nfaces = ti.field(int, ())
-        # self.renderer = renderer
-        # self.res = self.renderer.res
-        # self.v0 = ti.Vector.field(3, dtype=ti.f32, shape=1)
-        # self.v1 = ti.Vector.field(3, dtype=ti.f32, shape=1)
+
         @ti.materialize_callback
         def init_mesh():
             faces = obj['f']
