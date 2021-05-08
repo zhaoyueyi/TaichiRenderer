@@ -3,12 +3,9 @@
 # @File : tr_shader.py
 # @Software: PyCharm
 # coding:utf-8
-import numpy as np
 
 from common import *
 from hacker import *
-import tr_utils as tu
-import tr_unit
 
 @ti.data_oriented
 class PointShader:
@@ -43,22 +40,17 @@ class PointShader:
                 self.verts[i, k] = verts[k]
 
     @ti.kernel
-    def render(self, unit:ti.template()):
+    def render(self):
         color = V(1., 1., 1.)
         for P in ti.grouped(self.occup):
             self.occup[P] = -1
         for f in ti.smart(self.get_faces_range()):
-            # A, B, C = self.get_face_vertices(f)
             Tee = self.get_face_vertices(f)
             for i in ti.static(range(3)):
                 x = int(Tee[i].x*(self.res[0]/2)+(self.res[0]/2))
                 y = int(Tee[i].y*(self.res[1]/2)+(self.res[1]/2))
-                # self.occup[x, y] = 1
                 self.img[x, y] = color
-        # for P in ti.grouped(self.occup):
-        #     if self.occup[P] == -1:continue
-        #     color = V(1., 1., 1.)
-        #     unit.shade(P, color)
+
 
 @ti.data_oriented
 class LineShader:
@@ -124,7 +116,7 @@ class LineShader:
             self.img[pos] = color
 
     @ti.kernel
-    def render(self, unit:ti.template()):
+    def render(self):
         color = V(1., 1., 1.)
         for f in ti.smart(self.get_faces_range()):
             A, B, C = self.get_face_vertices(f)
@@ -147,8 +139,6 @@ class TriangleShader:
         self.img = self.renderer.image
         self.occup = ti.field(int, self.res)
         self.texture = texture
-        # self.mat_view[None] = ti.Matrix.identity(float, 4)
-        # self.mat_view.from_numpy(np.array(m, dtype=np.float32))
 
         self.bcn = ti.Vector.field(2, float, maxfaces)
         self.can = ti.Vector.field(2, float, maxfaces)
@@ -156,12 +146,9 @@ class TriangleShader:
         self.coo = ti.Vector.field(2, float, maxfaces)
         self.wsc = ti.Vector.field(3, float, maxfaces)
 
-
     @ti.func
     def to_viewport(self, p):
-        # print(p.xy)
         return (p.xy * 0.5 + 0.5) * self.res
-        # return p.xy
 
     @ti.func
     def get_faces_range(self):
@@ -182,14 +169,6 @@ class TriangleShader:
     def get_face_texcoords(self, f):
         A, B, C = self.coors[f, 0], self.coors[f, 1], self.coors[f, 2]
         return A, B, C
-
-    @ti.func
-    def get_texture_size(self):
-        return self.texture[0].shape[0], self.texture[0].shape[1]
-
-    @ti.func
-    def get_texture_color(self, p):
-        p = ifloor(p * self.get_texture_size())
 
     @ti.kernel
     def set_model(self, model: ti.template()):
@@ -225,17 +204,13 @@ class TriangleShader:
         return 1 if u>0 and v>0 and u+v<=1 else -1
 
     @ti.kernel
-    def render(self, unit:ti.template()):
-        light_dir = V(0., 1., 1.)
+    def render(self):
+        light_dir = V(1., 1., 1.)
         for f in ti.smart(self.get_faces_range()):
             A, B, C = self.get_face_vertices(f)
-            # mat_pers = ti.Matrix([[1,   0, 0,  0], [0,  1, 0,  0], [0, 0,    1,    0], [0, 0, -10, 1]])
-            # mat_view = ti.Matrix([[512, 0, 0,640], [0,512, 0,640], [0, 0,127.5,127.5], [0, 0,   0, 1]])
-            # # print(self.mat_view[None])
-            # mat = mat_pers @ mat_view
-            Av, Bv, Cv = [self.renderer.apply_mat(p) for p in [A, B, C]]
+            Av, Bv, Cv = [mapply_pos(self.renderer.matrix_fin[None], p) for p in [A, B, C]]
             facing = (Bv.xy - Av.xy).cross(Cv.xy - Av.xy)
-            # if facing <= 0:continue
+            if facing <= 0:continue
 
             a, b, c = [self.to_viewport(p) for p in [Av, Bv, Cv]]
             At, Bt, Ct = self.get_face_texcoords(f)
@@ -268,16 +243,6 @@ class TriangleShader:
                     intensity = norcoord.dot(light_dir)
                     self.img[P] = self.texture.get_color(texcoord)*intensity
 
-
-@ti.func
-def mapply(mat, pos, wei):
-    res = ti.Vector([mat[i, 3] for i in range(3)]) * wei
-    for i, j in ti.static(ti.ndrange(3, 3)):
-        res[i] += mat[i, j] * pos[j]
-    rew = mat[3, 3] * wei
-    for i in ti.static(range(3)):
-        rew += mat[3, i] * pos[i]
-    return res, rew
 
 @ti.data_oriented
 class IShader:

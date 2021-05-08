@@ -5,8 +5,6 @@
 # coding:utf-8
 
 from common import *
-import tr_utils as tu
-from tr_model import TRModel
 from tr_shader import *
 import tr_unit as tru
 
@@ -18,42 +16,29 @@ class TiRenderer:
         self.units = {}
         self.models = {}
 
+        self.background_color = 0
+
         self.W2V = ti.Matrix.field(4, 4, float, ())
         self.V2W = ti.Matrix.field(4, 4, float, ())
         self.bias = ti.Vector.field(2, float, ())
         self.depth = ti.field(float, self.res)
 
-        # self.camera = V(0, 0, 3)
-        self.mat_projection = ti.Matrix.field(4, 4, float, ())
-        self.mat_viewport = ti.Matrix.field(4, 4, float, ())
+        self.matrix_perspective = ti.Matrix.field(4, 4, float, ())
+        self.matrix_lookat = ti.Matrix.field(4, 4, float, ())
+        self.matrix_fin = ti.Matrix.field(4, 4, float, ())
+        self.camera = V(1, 1, 3)
+        self.light_dir = V(1., 1., 1.)
 
-        self.camera = V(0, 0, 0.01)
-
-        # self.mat_pers = ti.Matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, self.camera.norm(), 1]])
-        self.mat_pers = ti.Matrix([[1.732, 0, 0, 0], [0, 1.732, 0, 0], [0, 0, -1, -0.1], [0, 0, -1, 0]])
-        # mm = perspective()
-        # print(mm)
-        # self.mat_pers = ti.Matrix(4, 4, float, ())
-        # self.mat = ti.Matrix(4, 4, float, ())
-        #
-        # self.mat_view = ti.Matrix([[384, 0, 0, 512], [0, 384, 0, 512], [0, 0, 1, 0], [0, 0, 0, 1]])
-        # self.mat_view = ti.Matrix([[1, 0, 0, 0], [0, 1, -1.e-05, 0], [0, 1.e-05, 1, -3.e+00], [0, 0, 0, 1]])
-        self.mat_lookat = ti.Matrix([[1, 0, 0, 0], [0, 1, -0.00001, 0], [0, 0.00001, 1, -3.e+00], [0, 0, 0, 1]])
-        self.mat = ti.Matrix([[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]])
-        self.set_camera()
-        # self.mat_pers.from_numpy(ndarray=mm)
-        # print(self.mat)
-
-        # self.options = options
-        # self.light_dir = ti.Vector(3, ti.f32, ())
+        self.temp = perspective()
 
         @ti.materialize_callback
         @ti.kernel
         def init_engine():
-            self.mat_projection[None] = ti.Matrix.identity(float, 4)
-            self.mat_projection[None][3, 2] = -1/self.camera.z
-            # viewport = self.viewport(self.res[0] / 8, self.res[1] / 8, self.res[0] * 3 / 4, self.res[1] * 3 / 4)
-            # self.mat_viewport[None].from_numpy(np.array(viewport, dtype=np.float32))
+            for i in ti.static(range(4)):
+                self.matrix_perspective[None][i, 0] = self.temp[i][0]
+                self.matrix_perspective[None][i, 1] = self.temp[i][1]
+                self.matrix_perspective[None][i, 2] = self.temp[i][2]
+                self.matrix_perspective[None][i, 3] = self.temp[i][3]
             self.W2V[None] = ti.Matrix.identity(float, 4)
             self.W2V[None][2, 2] = -1
             '''
@@ -65,22 +50,22 @@ class TiRenderer:
             self.V2W[None] = ti.Matrix.identity(float, 4)
             self.V2W[None][2, 2] = -1
             self.bias[None] = [0.5, 0.5]
-
         ti.materialize_callback(self.clear_depth)
 
     def set_camera(self):
-        mat_lookat = self.lookat()
-        for i in range(3):
-            self.mat_lookat[i, 0] = mat_lookat[i, 0]
-            self.mat_lookat[i, 1] = mat_lookat[i, 1]
-            self.mat_lookat[i, 2] = mat_lookat[i, 2]
-            self.mat_lookat[i, 3] = mat_lookat[i, 3]
-        # print(self.mat_view)
-        self.mat = self.mat_pers @ self.mat_lookat
-        # self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
-        # print(mat_lookat)
+        mat_lookat = self.lookat(eye=self.camera)
+        for i in range(4):
+            self.matrix_lookat[None][i, 0] = mat_lookat[i, 0]
+            self.matrix_lookat[None][i, 1] = mat_lookat[i, 1]
+            self.matrix_lookat[None][i, 2] = mat_lookat[i, 2]
+            self.matrix_lookat[None][i, 3] = mat_lookat[i, 3]
+        self.afnaf()
 
-    def lookat(self, eye=(0, 0, 3), center=(0, 0, 0), up=(0, 1, 1e-12)):
+    @ti.kernel
+    def afnaf(self):
+        self.matrix_fin[None] = self.matrix_perspective[None]@self.matrix_lookat[None]
+
+    def lookat(self, eye, center=(0, 0, 0), up=(0, 1, 1e-12)):
         center = np.array(center, dtype=float)
         eye = np.array(eye, dtype=float)
         up = np.array(up, dtype=float)
@@ -96,17 +81,7 @@ class TiRenderer:
 
     @ti.func
     def apply_mat(self, pos):
-        # p = V(pos[0], pos[1], pos[2], 1)
-        # for i in ti.static(range(3)):
-        #     p[i] = pos[0]*self.mat[i, 0]+pos[1]*self.mat[i, 1]+pos[2]*self.mat[i, 2]+self.mat[i, 3]
-        # return V(p[0]/p[3], p[1]/p[3], p[2]/p[3])
         return mapply_pos(self.mat, pos)
-
-    @ti.func
-    def to_viewspace1(self, p):
-        return mapply_pos(self.W2V[None], p)
-        # print(self.W2V[None])
-        # return mapply_pos(self.mat_projection[None], p)
 
     @ti.func
     def to_viewport(self, p):
@@ -128,13 +103,6 @@ class TiRenderer:
         for P in ti.grouped(self.depth):
             self.depth[P] = -1
 
-    # def set_camera(self, view, proj):
-    #     W2V = proj @ view
-    #     V2W = np.linalg.inv(W2V)
-    #     self.W2V.from_numpy(np.array(W2V, dtype=np.float32))
-    #     self.V2W.from_numpy(np.array(V2W, dtype=np.float32))
-    #
-
     def add_model(self, model, render_type='point'):
         global shader
         if render_type == 'point':
@@ -145,25 +113,42 @@ class TiRenderer:
             texture = Texture(model.name)
             shader = TriangleShader(self, texture=texture)
         unit = tru.ColorUnit(self.image)
-        self.units[model] = unit
         self.models[model] = namespace(shader=shader)
 
     def render(self):
+        self.image.fill(self.background_color)
+        self.clear_depth()
         for model, oinfo in self.models.items():
-            unit = self.units[model]
-            # oinfo.shader.bind_texture(model.texture)
             oinfo.shader.set_model(model)
-            oinfo.shader.render(unit)
+            oinfo.shader.render()
 
     def show(self, save_file=None):
-        gui = ti.GUI('Taichi Renderer', self.res, fast_gui=True)
-        self.render()
+        gui = ti.GUI('Taichi Renderer', self.res)
+        gui.button('hello')
+        # self.render()
         # gui.set_image(self.image)
         # gui.show(save_file)
         while gui.running:
-        # #     self.render()
+            self.set_camera()
+            self.render()
             gui.set_image(self.image)
             gui.show(save_file)
+            for e in gui.get_events():
+                if e.type == gui.PRESS:
+                    if e.key == gui.LEFT:
+                        self.camera[0] -= 1
+                    elif e.key == gui.RIGHT:
+                        self.camera[0] += 1
+                    elif e.key == gui.UP:
+                        self.camera[1] += 1
+                    elif e.key == gui.DOWN:
+                        self.camera[1] -= 1
+                    self.set_camera()
+                elif e.type == gui.MOTION:
+                    if e.key == gui.WHEEL:
+                        delta = e.delta[1] / 120
+                        self.camera[2] -= delta
+                        self.set_camera()
 
     # def add_triangle(self, a, b, c):
     #     tr = Triangle(a, b, c)

@@ -47,12 +47,16 @@ def main():
                 iterations += 1
             pixels[i, j] = 1 - iterations * 0.02
 
-    gui = ti.GUI("Fractal", (n * 2, n))
-
+    gui = ti.GUI("Fractal", (n*2, n))
+    gui.button('hello')
     for i in range(1000000):
         paint(i * 0.03)
         gui.set_image(pixels)
         gui.show()
+    # for i in range(1000000):
+        # paint(i * 0.03)
+        # gui.set_image(pixels)
+        # gui.show()
 
 if __name__ == '__main__':
     main()

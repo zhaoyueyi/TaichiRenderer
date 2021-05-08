@@ -10,7 +10,7 @@ from tr_model import TRModel
 
 def main():
     # init
-    ti.init(arch=ti.cuda)
+    ti.init(arch=ti.cpu)
     renderer = TiRenderer()
     model = TRModel('obj/african_head/african_head')
     # model = TRModel('obj/boggie/body')
