@@ -10,10 +10,16 @@ import tr_unit as tru
 
 @ti.data_oriented
 class TiRenderer:
-    def __init__(self, res=(1024, 1024), **options):
+
+    # event
+    EFFECT = 'Effect'
+    COLOR = 'Color'
+    LIGHT = 'Light'
+
+    def __init__(self, res=(512, 512), **options):
         self.res = tovector((res, res) if isinstance(res, int) else res)
         self.image = ti.Vector.field(3, float, self.res)
-        self.units = {}
+        self.textures = {}
         self.models = {}
         self.shaders = []
 
@@ -32,14 +38,16 @@ class TiRenderer:
 
         self.temp = perspective()
 
-        self.ps = PointShader(self)
-        self.shaders.append(self.ps)
-        self.ls = LineShader(self)
-        self.shaders.append(self.ls)
-        self.ts = TriangleShader(self)
-        self.shaders.append(self.ts)
+        # self.ps = PointShader(self)
+        # self.shaders.append(self.ps)
+        # self.ls = LineShader(self)
+        # self.shaders.append(self.ls)
+        # self.ts = TriangleShader(self)
+        # self.shaders.append(self.ts)
 
         self.render_type = 2
+        self.is_simple_light = ti.field(dtype=ti.int32, shape=())
+        self.is_simple_color = ti.field(dtype=ti.int32, shape=())
 
         @ti.materialize_callback
         @ti.kernel
@@ -60,6 +68,8 @@ class TiRenderer:
             self.V2W[None] = ti.Matrix.identity(float, 4)
             self.V2W[None][2, 2] = -1
             self.bias[None] = [0.5, 0.5]
+            self.is_simple_color[None] = 0
+            self.is_simple_light[None] = 0
 
         ti.materialize_callback(self.clear_depth)
 
@@ -115,27 +125,54 @@ class TiRenderer:
             self.depth[P] = -1
 
     def add_model(self, model, render_type=0):
-        shader = self.shaders[render_type]
-        if render_type == 2:
-            shader.set_texture(Texture(model.name))
-        self.models[model] = namespace(shader=shader)
+        global shaders, ps, ls, ts
+        shaders = []
+        ps = PointShader(self)
+        shaders.append(ps)
+        ls = LineShader(self)
+        shaders.append(ls)
+        ts = TriangleShader(self, texture=Texture(model.name))
+        shaders.append(ts)
+        # shader = self.shaders[render_type]
+
+        # if self.render_type == 2:
+        # texture = Texture(model.name)
+        # self.textures[model.id] = namespace(texture=texture)
+        self.models[model] = namespace(shaders=shaders)
+
+    @ti.func
+    def query_texture(self, model_id, texcoord):
+        print(model_id)
+        return self.textures[model_id].texture.get_color(texcoord)
 
     def render(self):
         self.image.fill(self.background_color)
         self.clear_depth()
         for model, oinfo in self.models.items():
-            self.shaders[self.render_type].set_model(model)
-            self.shaders[self.render_type].render()
-            # oinfo.shader.set_model(model)
-            # oinfo.shader.render()
+            oinfo.shaders[self.render_type].set_model(model)
+            oinfo.shaders[self.render_type].render()
+            # if self.render_type == 2:
+            #     self.shaders[self.render_type].set_texture(oinfo.texture)
+            # self.shaders[self.render_type].set_model(model)
+            # self.shaders[self.render_type].render()
 
     def change_render_type(self):
-        # self.render_type = 'point' if self.render_type == 'triangle' else 'triangle'
         self.render_type = 2 if self.render_type == 0 else 0
+
+    @ti.kernel
+    def key_light(self):
+        self.is_simple_light[None] = 0 if self.is_simple_light[None] else 1
+
+    @ti.kernel
+    def key_color(self):
+        self.is_simple_color[None] = 0 if self.is_simple_color[None] else 1
 
     def show(self, save_file=None):
         gui = ti.GUI('Taichi Renderer', self.res)
-        # gui.button('hello', self.change_render_type())
+        gui.button('switch effect', self.EFFECT)
+        gui.button('display color', self.COLOR)
+        gui.button('light effect', self.LIGHT)
+
         while gui.running:
             self.set_camera()
             self.render()
@@ -151,8 +188,12 @@ class TiRenderer:
                         self.camera[1] += 1
                     elif e.key == gui.DOWN:
                         self.camera[1] -= 1
-                    elif e.key == gui.SPACE:
-                        self.render_type = 2 if self.render_type == 0 else 0
+                    elif e.key == self.EFFECT:
+                        self.render_type = self.render_type+1 if self.render_type != 2 else 0
+                    elif e.key == self.COLOR:
+                        self.key_color()
+                    elif e.key == self.LIGHT:
+                        self.key_light()
                     self.set_camera()
                 elif e.type == gui.MOTION:
                     if e.key == gui.WHEEL:

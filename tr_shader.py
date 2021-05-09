@@ -122,7 +122,8 @@ class LineShader:
         color = V(1., 1., 1.)
         for f in ti.smart(self.get_faces_range()):
             A, B, C = self.get_face_vertices(f)
-            a, b, c = [self.to_viewport(p) for p in [A, B, C]]
+            Av, Bv, Cv = [mapply_pos(self.renderer.matrix_fin[None], p) for p in [A, B, C]]
+            a, b, c = [self.to_viewport(p) for p in [Av, Bv, Cv]]
             self.line(a, b, color)
             self.line(b, c, color)
             self.line(c, a, color)
@@ -172,9 +173,6 @@ class TriangleShader:
         A, B, C = self.coors[f, 0], self.coors[f, 1], self.coors[f, 2]
         return A, B, C
 
-    def set_texture(self, texture):
-        self.texture = texture
-
     @ti.kernel
     def set_model(self, model: ti.template()):
         self.nfaces[None] = model.get_nfaces()
@@ -206,11 +204,12 @@ class TriangleShader:
             bot, top = ifloor(min(a, b, c)), iceil(max(a, b, c))
             bot, top = max(bot, 0), min(top, self.res-1)
 
-            normal = (B-A).cross(C-A)
-            normal = normal.normalized()
-            intensity = normal.dot(light_dir)/light_dir.norm()
-            intensity = intensity if intensity>=0 else 0
-            light = V(intensity, intensity, intensity)
+            intensity = 0.
+            if self.renderer.is_simple_light:
+                normal = (B-A).cross(C-A)
+                normal = normal.normalized()
+                intensity = normal.dot(light_dir)/light_dir.norm()
+                intensity = intensity if intensity>=0 else 0
 
             n = (b - a).cross(c - a)  # 矩阵叉乘
             bcn = (b - c) / n
@@ -228,8 +227,9 @@ class TriangleShader:
                     self.renderer.depth[P] = depth_f
                     texcoord = wei.x*At+wei.y*Bt+wei.z*Ct
                     norcoord = wei.x*An+wei.y*Bn+wei.z*Cn
-                    intensity = norcoord.dot(light_dir)
-                    self.img[P] = self.texture.get_color(texcoord)*intensity
+                    intensity = intensity if self.renderer.is_simple_light[None] else norcoord.dot(light_dir)
+                    color = V(1, 1, 1) if self.renderer.is_simple_color[None] else self.texture.get_color(texcoord)
+                    self.img[P] = color*intensity
 
 
 @ti.data_oriented

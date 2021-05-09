@@ -13,9 +13,11 @@ def main():
     ti.init(arch=ti.cpu)
     renderer = TiRenderer()
     model = TRModel('obj/african_head/african_head')
+    model2 = TRModel('obj/african_head/african_head_eye_inner')
     # model = TRModel('obj/boggie/body')
     # model2 = TRModel('obj/boggie/head')
     renderer.add_model(model, render_type=2)
+    renderer.add_model(model2, render_type=2)
     # renderer.add_model(model2, render_type='triangle')
     renderer.show()
 

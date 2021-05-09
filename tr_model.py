@@ -6,6 +6,7 @@
 
 from common import *
 import tr_utils as tu
+import random
 
 @ti.data_oriented
 class TRModel:
@@ -17,6 +18,7 @@ class TRModel:
         self.coors = ti.Vector.field(2, float, len(obj['vt']))  # [[xxx, xxx], [], []...]
         self.norms = ti.Vector.field(3, float, len(obj['vn']))  # [[xxx, xxx, xxx], [], []...]
         self.name  = obj_name
+        self.id = random.randint(0, 10000)
 
         @ti.materialize_callback
         def init_mesh():
